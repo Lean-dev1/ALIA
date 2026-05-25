@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fintech_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fintech_user
+      POSTGRES_PASSWORD: fintech_pass
+      POSTGRES_DB: fintech_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - fintech_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintech_user -d fintech_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fintech_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 4002
+      DATABASE_URL: postgresql://fintech_user:fintech_pass@postgres:5432/fintech_db
+      CORS_ORIGIN: "*"
+      ALPHA_VANTAGE_KEY: NDXQA40IDJ3U7IT3
+    ports:
+      - "4002:4002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - fintech_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fintech_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:4002/api
+    ports:
+      - "5176:5176"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - fintech_net
+
+volumes:
+  postgres_data:
+
+networks:
+  fintech_net:
+    driver: bridge
